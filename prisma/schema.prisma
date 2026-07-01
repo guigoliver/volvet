@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum ContentType {
+  ALPHABET
+  NUMERIC
+  CUSTOM
+  BLANK
+}
+
+model Template {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  rings       TemplateRingDef[]
+  wheels      Wheel[]
+}
+
+// The definition of a ring inside a template — not a materialized ring.
+model TemplateRingDef {
+  id            String               @id @default(cuid())
+  templateId    String
+  template      Template             @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  order         Int
+  segmentCount  Int
+  contentType   ContentType
+  defaultLabels TemplateSegmentDef[]
+
+  @@unique([templateId, order])
+}
+
+model TemplateSegmentDef {
+  id             String          @id @default(cuid())
+  ringDefId      String
+  ringDef        TemplateRingDef @relation(fields: [ringDefId], references: [id], onDelete: Cascade)
+  index          Int
+  defaultLabel   String?
+  defaultMeaning String?
+
+  @@unique([ringDefId, index])
+}
+
+// A materialized, editable wheel instance. Rings/segments are copied at
+// creation time so later template edits never retroactively change existing wheels.
+model Wheel {
+  id           String               @id @default(cuid())
+  name         String
+  templateId   String?
+  template     Template?            @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  rings        Ring[]
+  combinations CombinationMeaning[]
+}
+
+model Ring {
+  id               String               @id @default(cuid())
+  wheelId          String
+  wheel            Wheel                @relation(fields: [wheelId], references: [id], onDelete: Cascade)
+  order            Int
+  segmentCount     Int
+  contentType      ContentType
+  rotationDegrees  Float                @default(0)
+  segments         Segment[]
+  combinationParts CombinationSegment[]
+
+  @@unique([wheelId, order])
+}
+
+model Segment {
+  id               String               @id @default(cuid())
+  ringId           String
+  ring             Ring                 @relation(fields: [ringId], references: [id], onDelete: Cascade)
+  index            Int
+  label            String
+  meaning          String?
+  combinationParts CombinationSegment[]
+
+  @@unique([ringId, index])
+}
+
+// A saved, user-chosen combination of specific segments across some subset of rings.
+model CombinationMeaning {
+  id        String               @id @default(cuid())
+  wheelId   String
+  wheel     Wheel                @relation(fields: [wheelId], references: [id], onDelete: Cascade)
+  meaning   String
+  createdAt DateTime             @default(now())
+  parts     CombinationSegment[]
+}
+
+// Join table: one row per (ring, segment) chosen as part of a combination.
+model CombinationSegment {
+  id                   String             @id @default(cuid())
+  combinationMeaningId String
+  combinationMeaning   CombinationMeaning @relation(fields: [combinationMeaningId], references: [id], onDelete: Cascade)
+  ringId               String
+  ring                 Ring               @relation(fields: [ringId], references: [id], onDelete: Cascade)
+  segmentId            String
+  segment              Segment            @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@unique([combinationMeaningId, ringId])
+}
